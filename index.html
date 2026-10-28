@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en" dir="rtl">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EventFollow Mini</title>
+<style>
+:root{color-scheme:dark;--bg:#101b18;--panel:#1d3029;--field:#14251f;--line:#3a5145;--text:#f2eee4;--muted:#b8c6bc;--accent:#d8c9a7}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,Arial,sans-serif}main{max-width:960px;margin:auto;padding:28px 18px 60px}header,.row,.actions{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}header{border-bottom:1px solid var(--line);padding-bottom:20px}.brand{font:30px Georgia,serif}.brand span{color:var(--accent)}h1,h2{font-family:Georgia,serif;font-weight:normal}h1{font-size:clamp(30px,5vw,44px);margin:26px 0 4px}h2{font-size:24px;margin:0 0 14px}.muted,small{color:var(--muted)}.panel,.contact{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px;margin:16px 0}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}label{display:block;margin:8px 0 5px;color:var(--muted)}input,select,textarea,button{font:inherit}input,select,textarea{width:100%;padding:11px;background:var(--field);border:1px solid var(--line);border-radius:8px;color:var(--text)}textarea{min-height:90px;resize:vertical}button{padding:10px 16px;border:1px solid var(--line);border-radius:8px;background:var(--field);color:var(--text);cursor:pointer}button:hover{border-color:var(--accent)}button.primary{background:var(--accent);color:var(--bg);font-weight:700}button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}.actions{justify-content:flex-start;margin-top:12px}.contact h3{margin:0}.contact p{margin:6px 0;white-space:pre-wrap;overflow-wrap:anywhere}.tag{display:inline-block;border:1px solid var(--line);color:var(--accent);border-radius:30px;padding:3px 11px;margin-top:10px}.notice{min-height:24px;color:var(--accent);margin:12px 0}.empty{padding:24px;text-align:center;color:var(--muted)}.stat{color:var(--accent);font-size:20px}@media(max-width:640px){.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<main>
+<header><div class="brand">EventFollow <span>Mini</span></div><small id="storageStatus">Checking storage…</small></header>
+<h1>Make every connection count.</h1><p class="muted">Keep the context. Remember the next step.</p>
+<div id="notice" class="notice" role="status" aria-live="polite"></div>
+<section class="panel"><h2>Your Events</h2><form id="eventForm" class="row"><input id="eventName" maxlength="100" required placeholder="Event name" aria-label="Event name" style="flex:1;min-width:180px"><button type="submit" class="primary">+ Add Event</button></form><label for="eventSelect">Current Event</label><select id="eventSelect"></select></section>
+<section class="panel"><div class="row"><h2>Contacts &amp; Follow-ups</h2><strong class="stat" id="openCount">0 open</strong></div><label for="filter">Filter</label><select id="filter"><option value="all">All contacts</option><option value="open">Open follow-ups</option><option value="done">Completed follow-ups</option></select><div id="contactList"></div></section>
+<section class="panel"><h2>Add Contact</h2><form id="contactForm"><div class="grid"><div><label for="name">Full name *</label><input id="name" required maxlength="120"></div><div><label for="company">Company</label><input id="company" maxlength="120"></div><div><label for="role">Role</label><input id="role" maxlength="120"></div><div><label for="due">Follow-up date</label><input id="due" type="date"></div></div><label for="notes">Conversation notes</label><textarea id="notes" maxlength="3000"></textarea><label for="action">Next action</label><input id="action" maxlength="250" placeholder="e.g. Send an introduction"><div class="actions"><button type="submit" class="primary">Save Contact</button></div></form></section>
+<p class="muted" style="text-align:center;font-size:13px">Stored locally in this browser. No account or server.</p>
+</main>
+<script>
+"use strict";
+const KEY="eventfollow-pages-v1", $=id=>document.getElementById(id);
+const empty=()=>({events:[],contacts:[],currentEventId:null});
+let state=empty(),storageOK=true;
+function notice(s){$("notice").textContent=s}
+function storageStatus(s){$("storageStatus").textContent=s}
+function id(){return Date.now().toString(36)+"-"+Math.random().toString(36).slice(2,12)}
+try{
+  const probe=KEY+"-probe";localStorage.setItem(probe,"ok");
+  if(localStorage.getItem(probe)!=="ok")throw Error("Storage verification failed");
+  localStorage.removeItem(probe);
+  const raw=localStorage.getItem(KEY);
+  if(raw!==null){
+    const parsed=JSON.parse(raw);
+    if(!parsed||!Array.isArray(parsed.events)||!Array.isArray(parsed.contacts))throw Error("Invalid saved data");
+    state=parsed;
+  }
+  if(!state.events.some(e=>e.id===state.currentEventId))state.currentEventId=state.events[0]?.id||null;
+  storageStatus("Local storage ready");
+}catch(e){console.error(e);storageOK=false;storageStatus("Storage unavailable");notice("Storage cannot be read. Changes will not be saved.")}
+function save(){
+  if(!storageOK){notice("Storage unavailable. No changes saved.");return false}
+  try{const s=JSON.stringify(state);localStorage.setItem(KEY,s);if(localStorage.getItem(KEY)!==s)throw Error("Write verification failed");storageStatus("Saved locally");return true}
+  catch(e){console.error(e);storageStatus("Save failed");notice("Unable to save data in this browser.");return false}
+}
+function change(fn,success){
+  const previous=JSON.stringify(state);
+  try{fn();if(!save()){state=JSON.parse(previous);render();return false}render();notice(success);return true}
+  catch(e){console.error(e);state=JSON.parse(previous);render();notice("Unable to update. No change saved.");return false}
+}
+function node(tag,text,cls){const x=document.createElement(tag);if(text!==undefined)x.textContent=text;if(cls)x.className=cls;return x}
+function button(text,fn){const x=node("button",text);x.type="button";x.addEventListener("click",fn);return x}
+function current(){return state.contacts.filter(c=>c.eventId===state.currentEventId)}
+function render(){
+  const select=$("eventSelect");select.replaceChildren();
+  if(!state.events.length)select.append(new Option("Create your first event",""));
+  else{for(const e of state.events)select.append(new Option(e.name,e.id));select.value=state.currentEventId||""}
+  const contacts=current();
+  $("openCount").textContent=contacts.filter(c=>c.action&&!c.done).length+" open";
+  const filter=$("filter").value;
+  const visible=contacts.filter(c=>filter==="all"||(filter==="open"&&c.action&&!c.done)||(filter==="done"&&c.action&&c.done));
+  const list=$("contactList");list.replaceChildren();
+  if(!visible.length){list.append(node("div",state.events.length?"No contacts match this filter.":"Create an event to get started.","empty"));return}
+  for(const c of visible){
+    const card=node("article",undefined,"contact");card.append(node("h3",c.name));
+    if(c.company||c.role)card.append(node("p",[c.role,c.company].filter(Boolean).join(" · "),"muted"));
+    if(c.notes)card.append(node("p","Notes: "+c.notes));
+    if(c.action){card.append(node("p","Next: "+c.action+(c.due?" · "+c.due:"")));card.append(node("span",c.done?"Completed":"Open follow-up","tag"))}
+    const actions=node("div",undefined,"actions");
+    if(c.action)actions.append(button(c.done?"Reopen":"Mark Completed",()=>change(()=>{const target=state.contacts.find(x=>x.id===c.id);target.done=!target.done},"Follow-up saved.")));
+    actions.append(button("Delete",()=>{if(confirm("Delete this contact?"))change(()=>{state.contacts=state.contacts.filter(x=>x.id!==c.id)},"Contact deleted.")}));
+    card.append(actions);list.append(card);
+  }
+}
+$("eventForm").addEventListener("submit",e=>{e.preventDefault();const name=$("eventName").value.trim();if(!name){notice("Please enter an event name.");return}
+ if(change(()=>{const newEvent={id:id(),name};state.events.push(newEvent);state.currentEventId=newEvent.id},"Event saved."))$("eventForm").reset()
+});
+$("eventSelect").addEventListener("change",e=>{const selected=e.target.value;change(()=>{state.currentEventId=selected},"Event selected.")});
+$("contactForm").addEventListener("submit",e=>{e.preventDefault();if(!state.currentEventId){notice("Create an event first.");return}
+ const name=$("name").value.trim();if(!name){notice("Please enter a contact name.");return}
+ const record={id:id(),eventId:state.currentEventId,name,company:$("company").value.trim(),role:$("role").value.trim(),notes:$("notes").value.trim(),action:$("action").value.trim(),due:$("due").value,done:false};
+ if(change(()=>{state.contacts.push(record)},"Contact saved."))$("contactForm").reset()
+});
+$("filter").addEventListener("change",render);render();
+</script>
+</body>
+</html>
